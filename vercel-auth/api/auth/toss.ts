@@ -25,11 +25,30 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { exchangeAuthorizationCode, type Referrer } from '../../lib/appintoss-client';
 import { getAdminAuth } from '../../lib/firebase-admin';
 
+// ── JWT payload 디코드 (서명 검증 X — mTLS로 받은 토스 토큰이라 신뢰) ──
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    // URL-safe base64 → 표준 base64 + 패딩 보정
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = Buffer.from(padded, 'base64').toString('utf-8');
+    const payload = JSON.parse(json);
+    return typeof payload === 'object' && payload !== null ? payload as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── userKey 추출 헬퍼 (응답 shape 변동 흡수) ──
+//  토스 /generate-token 응답은 OAuth2 표준 → userKey 필드 없음.
+//  accessToken JWT의 `sub` claim이 사용자 영구 식별자(앱별 안정).
 function extractUserKey(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const b = body as Record<string, unknown>;
 
+  // 1) (구·호환) 직접 userKey 필드 — 응답이 바뀌어도 깨지지 않게 유지
   const success = b.success as Record<string, unknown> | undefined;
   if (success && typeof success === 'object' && success.userKey != null) {
     return String(success.userKey);
@@ -39,6 +58,20 @@ function extractUserKey(body: unknown): string | null {
     return String(data.userKey);
   }
   if (b.userKey != null) return String(b.userKey);
+
+  // 2) (현행) accessToken JWT의 sub claim
+  const tokenCandidates: unknown[] = [];
+  if (success && typeof success === 'object') tokenCandidates.push(success.accessToken);
+  if (data && typeof data === 'object') tokenCandidates.push(data.accessToken);
+  tokenCandidates.push(b.accessToken);
+
+  for (const t of tokenCandidates) {
+    if (typeof t !== 'string' || t.length === 0) continue;
+    const payload = decodeJwtPayload(t);
+    if (payload && typeof payload.sub === 'string' && payload.sub.length > 0) {
+      return payload.sub;
+    }
+  }
   return null;
 }
 
