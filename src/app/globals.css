@@ -1,0 +1,248 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════
+   우리 사이 × TDS(Toss Design System) 디자인 토큰
+   ─────────────────────────────────────────────
+   배경: TDS White/Gray 베이스 + 크림/줄노트 포인트
+   ═══════════════════════════════════════════════ */
+:root {
+  /* ── TDS 베이스 색상 ── */
+  --tds-white:      #FFFFFF;
+  --tds-gray-10:    #F9FAFB;   /* 기본 배경 */
+  --tds-gray-20:    #F2F4F6;
+  --tds-gray-50:    #E5E8EB;
+  --tds-gray-100:   #D1D6DB;
+  --tds-gray-300:   #9EA7AD;
+  --tds-gray-600:   #4E5968;
+  --tds-gray-800:   #333D4B;
+  --tds-gray-900:   #191F28;
+
+  /* ── TDS 토스 블루 ── */
+  --tds-blue:       #3182F6;
+  --tds-blue-50:    #EBF3FE;
+  --tds-blue-100:   #C9DFF8;
+
+  /* ── 우리 사이 포인트 컬러 (크림/줄노트 감성) ── */
+  --background:     var(--tds-gray-10);
+  --paper:          var(--tds-white);
+  --ink:            var(--tds-gray-900);
+  --caption:        var(--tds-gray-600);
+  --line:           var(--tds-gray-50);
+
+  --me:             #B85F5F;   /* 내 일정 */
+  --partner:        #5F7B95;   /* 상대 일정 */
+  --shared:         #9B8AA8;   /* 공유 일정 (포인트 퍼플) */
+  --accent:         #D4A574;   /* 포인트 웜톤 */
+
+  /* ── TDS Typography Scale ── */
+  --tds-font-xl:    22px;
+  --tds-font-lg:    18px;
+  --tds-font-md:    16px;
+  --tds-font-sm:    14px;
+  --tds-font-xs:    12px;
+  --tds-font-2xs:   11px;
+}
+
+/* ── 앱인토스 클래스 별칭 (CSS 변수 → Tailwind 확장용) ── */
+.toss-blue { color: var(--tds-blue); }
+.bg-toss-blue { background-color: var(--tds-blue); }
+.border-toss-blue { border-color: var(--tds-blue); }
+
+/* ─────────────────────────────────────────────
+   TDS Typography 유틸리티 클래스
+   ───────────────────────────────────────────── */
+.tds-headline1 {
+  font-size: var(--tds-font-xl);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--tds-gray-900);
+  letter-spacing: -0.01em;
+}
+.tds-headline2 {
+  font-size: var(--tds-font-lg);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--tds-gray-900);
+}
+.tds-body1 {
+  font-size: var(--tds-font-md);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--tds-gray-800);
+}
+.tds-body2 {
+  font-size: var(--tds-font-sm);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--tds-gray-800);
+}
+.tds-caption {
+  font-size: var(--tds-font-xs);
+  font-weight: 400;
+  color: var(--tds-gray-600);
+  line-height: 1.5;
+}
+
+/* ─────────────────────────────────────────────
+   TDS Button 컴포넌트
+   ───────────────────────────────────────────── */
+.tds-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 15px 20px;
+  background: var(--tds-blue);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: var(--tds-font-sm);
+  font-weight: 700;
+  font-family: "Pretendard", sans-serif;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tds-btn-primary:active  { transform: scale(0.98); }
+.tds-btn-primary:disabled { opacity: 0.4; pointer-events: none; }
+
+.tds-btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--tds-gray-10);
+  color: var(--tds-gray-800);
+  border: 1.5px solid var(--tds-gray-50);
+  border-radius: 14px;
+  font-size: var(--tds-font-sm);
+  font-weight: 600;
+  font-family: "Pretendard", sans-serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tds-btn-secondary:active { background: var(--tds-gray-20); }
+
+.tds-btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: none;
+  font-size: var(--tds-font-xs);
+  color: var(--tds-gray-300);
+  font-family: "Pretendard", sans-serif;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.tds-btn-ghost:hover { color: var(--tds-gray-600); }
+
+/* ─────────────────────────────────────────────
+   TDS TextField
+   ───────────────────────────────────────────── */
+.tds-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1.5px solid var(--tds-gray-50);
+  border-radius: 12px;
+  font-size: var(--tds-font-sm);
+  color: var(--tds-gray-900);
+  font-family: "Pretendard", sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+}
+.tds-input::placeholder { color: var(--tds-gray-100); }
+.tds-input:focus { border-color: var(--tds-blue); }
+
+/* ─────────────────────────────────────────────
+   Safe Area (토스 앱인앱 노치 대응)
+   ───────────────────────────────────────────── */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ─────────────────────────────────────────────
+   바디 기본 스타일 (TDS White + 크림 포인트)
+   ───────────────────────────────────────────── */
+html { overflow-x: hidden; overflow-y: auto; }
+
+body {
+  background-color: var(--tds-gray-10);
+  /* 미세한 줄노트 감성 — 포인트 컬러로만 유지 */
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 31px,
+    rgba(229, 232, 235, 0.4) 31px,
+    rgba(229, 232, 235, 0.4) 32px
+  );
+  color: var(--tds-gray-900);
+  font-family: "Pretendard", sans-serif;
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  line-height: 1.6;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* UTF-8 렌더링 보증 */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─────────────────────────────────────────────
+   공통 애니메이션
+   ───────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.animate-slide-down { animation: slide-down 0.3s ease-out forwards; }
+
+@keyframes scale-in {
+  from { transform: scale(0.93); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+.animate-scale-in { animation: scale-in 0.25s ease-out forwards; }
+
+@keyframes fade-switch { from { opacity: 0; } to { opacity: 1; } }
+.animate-fade-switch { animation: fade-switch 0.2s ease-out forwards; }
+
+/* 파티클 */
+@keyframes float-up {
+  0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 0.8; }
+  100% { transform: translateY(-20vh) scale(1); opacity: 0; }
+}
+.particle { position: fixed; animation: float-up linear forwards; pointer-events: none; z-index: 100; }
+
+@keyframes heart-burst {
+  0%   { transform: scale(0) translateY(0); opacity: 1; }
+  50%  { opacity: 1; }
+  100% { transform: scale(1.5) translateY(-80px); opacity: 0; }
+}
+.heart-particle { position: absolute; animation: heart-burst 1.2s ease-out forwards; pointer-events: none; }
+
+/* 스크롤바 숨기기 */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
