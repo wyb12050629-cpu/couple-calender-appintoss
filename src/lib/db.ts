@@ -207,6 +207,13 @@ export async function createCoupleWithInvite(inviterUid: string): Promise<{ coup
           createdAt:   serverTimestamp(),
           expiresAt:   null,
         });
+        // users/{uid} 에 coupleId / coupleStatus / inviteCode 동기화
+        // (마이페이지의 InviteCodeCard가 profile.inviteCode·coupleStatus로 노출 여부를 판단)
+        tx.set(paths.user(inviterUid), {
+          coupleId:     coupleRef.id,
+          coupleStatus: 'pending' as CoupleStatus,
+          inviteCode:   code,
+        }, { merge: true });
         return { coupleId: coupleRef.id, inviteCode: code };
       });
       return result;
@@ -265,6 +272,161 @@ export async function acceptInvite(code: string, inviteeUid: string): Promise<{
     console.error('[db.acceptInvite] 트랜잭션 실패:', e);
     return { ok: false as const, reason: 'unknown' as const };
   }
+}
+
+// ── 해지 예약 (48시간 유예) ──
+/** 유예 기간 (밀리초). 48시간. */
+export const COUPLE_DELETION_GRACE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * 커플 해지 예약 — 즉시 삭제하지 않고 pendingDeletion 필드만 세팅.
+ * 양쪽 클라이언트는 이 필드를 onSnapshot 으로 보고 카운트다운 배너를 표시.
+ *
+ * 멱등성: 이미 예약돼 있어도 재예약(executeAt 갱신)을 막지 않는다 — 호출자 UI에서 판단.
+ */
+export async function scheduleCoupleDeletion(coupleId: string, requestedBy: string): Promise<{ executeAt: string }> {
+  const executeAtMs = Date.now() + COUPLE_DELETION_GRACE_MS;
+  const executeAt   = new Date(executeAtMs);
+  await updateDoc(paths.couple(coupleId), {
+    pendingDeletion: {
+      requestedBy,
+      requestedAt: serverTimestamp(),
+      executeAt:   Timestamp.fromDate(executeAt),
+    },
+  });
+  return { executeAt: executeAt.toISOString() };
+}
+
+/**
+ * 해지 예약 취소 — 단, 예약을 건 본인(requestedBy) 만 취소 가능.
+ * 트랜잭션으로 race condition 방지.
+ *
+ * 반환값: 'ok' = 취소됨, 'not_owner' = 다른 사람이 예약함, 'no_pending' = 예약 없음
+ */
+export async function cancelCoupleDeletion(coupleId: string, currentUid: string): Promise<'ok' | 'not_owner' | 'no_pending'> {
+  const db = getFirebaseDb();
+  return await runTransaction(db, async (tx) => {
+    const snap = await tx.get(paths.couple(coupleId));
+    if (!snap.exists()) return 'no_pending' as const;
+    const data = snap.data() as DocumentData;
+    const pd = data.pendingDeletion as { requestedBy?: string } | null | undefined;
+    if (!pd) return 'no_pending' as const;
+    if (pd.requestedBy !== currentUid) return 'not_owner' as const;
+    tx.update(paths.couple(coupleId), { pendingDeletion: null });
+    return 'ok' as const;
+  });
+}
+
+/**
+ * 솔로 leave — 한쪽이 즉시 떠나는 모드 (양쪽 데이터 삭제하는 disconnectCouple과 다름).
+ *
+ * 동작:
+ *  1) couples/{cid}.members 에서 leaverUid 제거 (남은 사람 1명만 유지)
+ *  2) couples/{cid}.archivedMember 에 떠난 사람 정보(uid, nickname='상대방', leftAt) 박음
+ *  3) leaver users/{uid} 문서 리셋 (coupleId/partnerUid/inviteCode/isOnboarded 모두 클리어)
+ *
+ * 데이터 보존:
+ *  - events / gratitudes 모두 그대로 유지 (남은 사람의 추억)
+ *  - 남은 사람의 시점에서 leaver가 만든 일정/감사는 작성자가 archivedMember.uid이지만
+ *    UI 표시 시 effectiveProfile.partnerNickname='상대방'으로 derive (UserContext)
+ *
+ * 보안:
+ *  - leaver는 members에서 빠지므로 firestore.rules의 isMemberOfCouple 통과 못 함
+ *    → 다시 같은 uid로 토스 로그인하더라도 이전 커플 데이터 접근 불가
+ *  - leaver의 user 문서는 isOnboarded=false로 리셋되어 다음 로그인 시 온보딩 화면부터.
+ */
+export async function leaveCoupleSolo(coupleId: string, leaverUid: string): Promise<void> {
+  // 1) 커플 문서 읽기
+  const coupleSnap = await getDoc(paths.couple(coupleId));
+  if (!coupleSnap.exists()) throw new Error('couple_not_found');
+  const c = coupleSnap.data() as DocumentData;
+  const members: string[] = Array.isArray(c.members) ? (c.members as string[]) : [];
+  const remaining = members.filter(uid => uid !== leaverUid);
+
+  if (remaining.length === 0) {
+    // 솔로(혼자)인 상태에서 leave — 그냥 전체 삭제로 처리하는 게 자연스럽다
+    await disconnectCouple(coupleId);
+    return;
+  }
+
+  // 2) couples 문서 업데이트 — members 축소 + archivedMember 기록
+  await updateDoc(paths.couple(coupleId), {
+    members: remaining,
+    archivedMember: {
+      uid:       leaverUid,
+      nickname:  '상대방',
+      leftAt:    Timestamp.now(),
+    },
+    pendingDeletion: null,   // 혹시 예약 중이었으면 같이 정리
+  });
+
+  // 3) leaver user 문서 리셋
+  await setDoc(paths.user(leaverUid), {
+    coupleId:         null,
+    coupleStatus:     'disconnected' as CoupleStatus,
+    inviteCode:       null,
+    partnerUid:       null,
+    partnerNickname:  null,
+    partnerCharacter: null,
+    isOnboarded:      false,
+    updatedAt:        serverTimestamp(),
+  }, { merge: true });
+}
+
+/**
+ * 커플 연결 해지 — 모든 커플 데이터 영구 삭제 + 양쪽 사용자 온보딩 리셋
+ *
+ * 처리 순서:
+ *   1) couples/{cid} 문서 읽어 members + inviteCode 확보
+ *   2) events 서브컬렉션 전부 삭제
+ *   3) gratitudes 서브컬렉션 전부 삭제
+ *   4) inviteCodes/{code} 삭제
+ *   5) couples/{cid} 문서 삭제
+ *   6) members 양쪽 users/{uid} 문서의 커플 필드 + isOnboarded=false 설정
+ *
+ * 트랜잭션을 쓰지 않는 이유: 서브컬렉션 일괄 삭제는 단일 트랜잭션 범위 밖.
+ * 부분 실패 가능성을 감수하고 best-effort로 진행 (실패 시 호출자에서 재시도 가능).
+ */
+export async function disconnectCouple(coupleId: string): Promise<void> {
+  // 1) 커플 문서 읽기
+  const coupleSnap = await getDoc(paths.couple(coupleId));
+  if (!coupleSnap.exists()) {
+    // 이미 사라진 경우 — 호출자 쪽에서 자기 user 문서만 정리하도록 throw
+    throw new Error('couple_not_found');
+  }
+  const c = coupleSnap.data() as DocumentData;
+  const members: string[] = Array.isArray(c.members) ? (c.members as string[]) : [];
+  const code: string | undefined = typeof c.inviteCode === 'string' ? c.inviteCode : undefined;
+
+  // 2) events 전부 삭제
+  const evSnap = await getDocs(paths.events(coupleId));
+  await Promise.all(evSnap.docs.map(d => deleteDoc(d.ref)));
+
+  // 3) gratitudes 전부 삭제
+  const grSnap = await getDocs(paths.gratitudes(coupleId));
+  await Promise.all(grSnap.docs.map(d => deleteDoc(d.ref)));
+
+  // 4) inviteCode 삭제 (없으면 무시)
+  if (code) {
+    await deleteDoc(paths.inviteCode(code)).catch(() => {});
+  }
+
+  // 5) 커플 문서 삭제
+  await deleteDoc(paths.couple(coupleId));
+
+  // 6) 양쪽 user 문서의 커플 필드 클리어 + 온보딩 리셋
+  await Promise.all(members.map(uid =>
+    setDoc(paths.user(uid), {
+      coupleId:         null,
+      coupleStatus:     'disconnected' as CoupleStatus,
+      inviteCode:       null,
+      partnerUid:       null,
+      partnerNickname:  null,
+      partnerCharacter: null,
+      isOnboarded:      false,
+      updatedAt:        serverTimestamp(),
+    }, { merge: true })
+  ));
 }
 
 /** 파트너 프로필 (uid로 직접 조회) */

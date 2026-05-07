@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { useUser } from '@/context/UserContext';
-import { createEvent, updateEvent, deleteEvent } from '@/lib/db';
+import { createEvent, updateEvent, deleteEvent, createCoupleWithInvite } from '@/lib/db';
 import { getEventTone } from '@/lib/identity';
+import { sendTossNotify, type NotifyTemplate } from '@/lib/notify';
 import type { Event, Tone } from '@/lib/types';
 
 type Props = {
@@ -59,7 +60,7 @@ export default function EventModal({ date, event, onClose, onSaved }: Props) {
 
   const handleSave = async () => {
     if (!title.trim())                  return;
-    if (!profile?.coupleId || !uid)     { alert('커플 연결이 필요합니다.'); return; }
+    if (!uid)                            { alert('로그인이 필요합니다.'); return; }
     if (endDate < startDate)            { alert('종료 날짜가 시작 날짜보다 빠를 수 없어요.'); return; }
     if (!allDay && startDate === endDate && startTime && endTime && endTime < startTime) {
       alert('종료 시간이 시작 시간보다 빠를 수 없어요.'); return;
@@ -69,6 +70,22 @@ export default function EventModal({ date, event, onClose, onSaved }: Props) {
     }
 
     setSaving(true);
+
+    // 커플 연결 전이라도 '내 일정'은 등록 가능 — 솔로 커플 doc을 자동 생성하여
+    // events 서브컬렉션을 만든다. 이후 파트너가 초대 코드를 입력하면 그대로 계승됨.
+    let coupleId = profile?.coupleId ?? null;
+    if (!coupleId) {
+      try {
+        const created = await createCoupleWithInvite(uid);
+        coupleId = created.coupleId;
+        // onSnapshot이 곧 profile.coupleId/inviteCode를 반영
+      } catch (e) {
+        console.error('[EventModal] 솔로 커플 자동 생성 실패:', e);
+        alert('일정을 저장할 공간을 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
+        setSaving(false);
+        return;
+      }
+    }
 
     // ── Tone → (creatorUid, visibility, status) 매핑 ──
     //  me      : 내 일정 (creatorUid = 나)
@@ -97,9 +114,22 @@ export default function EventModal({ date, event, onClose, onSaved }: Props) {
 
     try {
       if (event) {
-        await updateEvent(profile.coupleId, event.id, payload);
+        await updateEvent(coupleId, event.id, payload);
       } else {
-        await createEvent(profile.coupleId, payload);
+        await createEvent(coupleId, payload);
+
+        // ── 토스 푸시 발송 (베스트 에포트 — 실패해도 흐름 막지 않음) ──
+        // 모든 톤(me / shared / partner) 동일한 단일 템플릿 사용.
+        // 제목·내용: "상대방이 새로운 일정을 등록했어요." (변수 없음)
+        // 인앱 수락/거절 동작은 EventAcceptToast가 Firestore로 처리.
+        if (partnerUid) {
+          const template: NotifyTemplate = 'woorisai_event_new';
+          void sendTossNotify({
+            recipientUid:    partnerUid,
+            templateSetCode: template,
+            context: {},   // 변수 없음 — 통일 메시지
+          }).catch(e => console.warn('[EventModal] notify 실패:', e));
+        }
       }
       onSaved();
     } catch (e) {

@@ -116,6 +116,30 @@ export type InviteCodeDoc = {
   status:      'pending' | 'used' | 'expired';
 };
 
+// ── 커플 해지 예약 ──
+/**
+ * 사용자가 '커플 연결 해지'를 누르면 즉시 삭제하지 않고
+ * 48시간 유예 기간을 두고 예약. requestedBy와 동일한 uid만 취소 가능.
+ * executeAt을 지나면 다음 앱 오픈 시 클라이언트가 실제 disconnectCouple()을 트리거.
+ */
+export type PendingDeletion = {
+  requestedBy: string;   // 해지 버튼 누른 uid
+  requestedAt: string;   // ISO
+  executeAt:   string;   // ISO — 이 시각 이후엔 클라이언트가 실삭제
+};
+
+/**
+ * 솔로 leave (한쪽이 즉시 떠난) 후 커플 doc에 박히는 익명화 정보.
+ * - members 배열에서 leaver는 제거되어 더 이상 데이터 접근 불가
+ * - 남은 사람의 시점에서는 archivedMember.nickname('상대방')으로 표시되고
+ *   파트너 톤 일정 등록은 비활성화됨 (UserContext에서 derive)
+ */
+export type ArchivedMember = {
+  uid:       string;   // 떠난 사람의 uid (이력용)
+  nickname:  string;   // 항상 '상대방'으로 박음
+  leftAt:    string;   // ISO
+};
+
 // ── 커플 문서 ──
 /**
  * Firestore 경로: /couples/{coupleId}
@@ -123,11 +147,13 @@ export type InviteCodeDoc = {
  */
 export type CoupleDoc = {
   id:          string;
-  members:     [string, string] | [string];   // 1명일 땐 invite 대기 상태
+  members:     [string, string] | [string];   // 1명일 땐 invite 대기 또는 솔로 leave 직후
   inviterUid:  string;
   inviteeUid:  string | null;
   inviteCode:  string | null;
   status:      CoupleStatus;
   createdAt:   string;
   connectedAt: string | null;
+  pendingDeletion?: PendingDeletion | null;
+  archivedMember?:  ArchivedMember | null;
 };
